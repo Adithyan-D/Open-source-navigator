@@ -62,7 +62,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         username: str = payload.get("sub")
         if username is None:
             raise credentials_exception
-    except (jwt.PyJWTError, ValidationError):
+    except Exception:
         raise credentials_exception
 
     user = db.query(models.User).filter(models.User.username == username).first()
