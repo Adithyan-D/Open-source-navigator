@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Table, DateTime
+# backend/models.py
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Table, DateTime, func
 from sqlalchemy.orm import relationship, declarative_base
 import datetime
 
@@ -11,11 +12,10 @@ class User(Base):
     username = Column(String, unique=True, index=True, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
-    skills = Column(String, default="")  # Stored as comma-separated values for now (e.g., "Python,React")
+    skills = Column(String, default="")
     interests = Column(String, default="") 
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    # Relationships
     bookmarks = relationship("Bookmark", back_populates="user")
 
 
@@ -30,13 +30,12 @@ class Repository(Base):
     stars = Column(Integer, default=0)
     forks = Column(Integer, default=0)
     open_issues = Column(Integer, default=0)
-    languages = Column(String, default="") # e.g., "Python,TypeScript"
+    languages = Column(String, default="")
     
-    # Cached metrics calculated by us later
     complexity_score = Column(Integer, nullable=True)
     health_score = Column(Integer, nullable=True)
     
-    last_updated = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    last_updated = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     bookmarks = relationship("Bookmark", back_populates="repository")
 
@@ -47,8 +46,8 @@ class Bookmark(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     repository_id = Column(Integer, ForeignKey("repositories.id"), nullable=False)
-    status = Column(String, default="bookmarked") # bookmarked, contributing, completed
-    saved_at = Column(DateTime, default=datetime.datetime.utcnow)
+    status = Column(String, default="bookmarked")
+    saved_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="bookmarks")
     repository = relationship("Repository", back_populates="bookmarks")
