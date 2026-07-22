@@ -28,4 +28,19 @@ class TokenData(BaseModel):
 class ProfileUpdate(BaseModel):
     skills: str
     interests: str
+
+class RepositoryResponse(BaseModel):
+    github_id: int
+    name: str
+    owner: str
+    description: str | None = None
+    stars: int
+    forks: int
+    open_issues: int
+    languages: str
+    complexity_score: int | None = None
+    health_score: int | None = None
+
+    class Config:
+        from_attributes = True
     

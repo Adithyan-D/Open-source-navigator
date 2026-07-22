@@ -1,3 +1,4 @@
+import github_service
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -98,3 +99,95 @@ def update_user_profile(
     db.commit()
     db.refresh(current_user)
     return current_user
+
+@app.get("/api/recommendations", response_model=list[schemas.RepositoryResponse])
+async def get_repository_recommendations(
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """
+    Fetches GitHub repositories matched to the authenticated user's skills and interests,
+    complete with custom complexity and health scores.
+    """
+    # 1. Extract user skills or fallback to general popular repos
+    user_skills = current_user.skills.strip()
+    
+    if user_skills:
+        # Take the primary skill (e.g., if skills = "Python, FastAPI", search "language:python")
+        primary_skill = user_skills.split(",")[0].strip()
+        search_query = f"language:{primary_skill} stars:>50"
+    else:
+        search_query = "stars:>1000"
+
+    # 2. Fetch repos from GitHub REST API
+    repos = await github_service.fetch_github_repositories(query=search_query, limit=10)
+    
+    return repos
+
+@app.post("/api/bookmarks/{github_id}", response_model=schemas.RepositoryResponse)
+async def bookmark_repository(
+    github_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """Saves a repository to the user's bookmarks."""
+    # 1. Check if the repo is already in our local Postgres/SQLite table
+    repo = db.query(models.Repository).filter(models.Repository.github_id == github_id).first()
+
+    # 2. If not indexed in local DB yet, fetch details from GitHub REST API
+    if not repo:
+        import httpx
+        url = f"https://api.github.com/repositories/{github_id}"
+        headers = {"Accept": "application/vnd.github.v3+json", "User-Agent": "OpenSourceNavigator-App"}
+        
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(url, headers=headers)
+            if resp.status_code != 200:
+                raise HTTPException(status_code=404, detail="GitHub repository not found.")
+            
+            item = resp.json()
+            stars = item.get("stargazers_count", 0) or 0
+            forks = item.get("forks_count", 0) or 0
+            open_issues = item.get("open_issues_count", 0) or 0
+            
+            # Save repo record to database
+            repo = models.Repository(
+                github_id=item.get("id"),
+                name=item.get("name", "Unknown"),
+                owner=item.get("owner", {}).get("login", "Unknown"),
+                description=item.get("description") or "",
+                stars=stars,
+                forks=forks,
+                open_issues=open_issues,
+                languages=item.get("language") or "Unknown",
+                complexity_score=github_service.calculate_complexity_score(stars, forks, open_issues),
+                health_score=github_service.calculate_health_score(open_issues, stars, forks),
+            )
+            db.add(repo)
+            db.commit()
+            db.refresh(repo)
+
+    # 3. Check if user already bookmarked this repo
+    existing_bookmark = db.query(models.Bookmark).filter(
+        models.Bookmark.user_id == current_user.id,
+        models.Bookmark.repository_id == repo.id
+    ).first()
+
+    if existing_bookmark:
+        raise HTTPException(status_code=400, detail="Repository already bookmarked.")
+
+    # 4. Save new bookmark relation
+    new_bookmark = models.Bookmark(user_id=current_user.id, repository_id=repo.id)
+    db.add(new_bookmark)
+    db.commit()
+    
+    return repo
+
+
+@app.get("/api/bookmarks", response_model=list[schemas.RepositoryResponse])
+def get_user_bookmarks(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """Retrieves all repositories bookmarked by the authenticated user."""
+    bookmarks = db.query(models.Bookmark).filter(models.Bookmark.user_id == current_user.id).all()
+    return [b.repository for b in bookmarks]
