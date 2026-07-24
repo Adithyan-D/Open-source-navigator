@@ -43,4 +43,15 @@ class RepositoryResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+# backend/schemas.py (Add at the bottom)
+
+class AIInsightsData(BaseModel):
+    summary: str
+    roadmap: list[str]
+
+class AIInsightsResponse(BaseModel):
+    github_id: int
+    repo_name: str
+    ai_insights: AIInsightsData
     
