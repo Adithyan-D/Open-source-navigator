@@ -1,4 +1,5 @@
 import github_service
+import ai_service
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -191,3 +192,36 @@ def get_user_bookmarks(
     """Retrieves all repositories bookmarked by the authenticated user."""
     bookmarks = db.query(models.Bookmark).filter(models.Bookmark.user_id == current_user.id).all()
     return [b.repository for b in bookmarks]
+
+@app.post("/api/repositories/{github_id}/ai-insights", response_model=schemas.AIInsightsResponse)
+async def get_repository_ai_insights(
+    github_id: int,
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """
+    Generates AI-powered repository insights using Gemini for a given GitHub repo.
+    """
+    import httpx
+    url = f"https://api.github.com/repositories/{github_id}"
+    headers = {"Accept": "application/vnd.github.v3+json", "User-Agent": "OpenSourceNavigator-App"}
+    
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(url, headers=headers)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=404, detail="GitHub repository not found.")
+        
+        data = resp.json()
+        
+        # Call AI service
+        insights = ai_service.generate_repo_insights(
+            repo_name=data.get("name", ""),
+            owner=data.get("owner", {}).get("login", ""),
+            description=data.get("description", ""),
+            language=data.get("language", "Unknown")
+        )
+        
+        return {
+            "github_id": github_id,
+            "repo_name": data.get("name"),
+            "ai_insights": insights
+        }
