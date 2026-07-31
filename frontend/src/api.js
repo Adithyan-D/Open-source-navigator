@@ -39,8 +39,13 @@ export const fetchUserProfile = async () => {
 };
 
 // GitHub & AI Recommendations API Functions
-export const fetchRecommendations = async () => {
-  const response = await api.get('/api/recommendations');
+// Updated to support dynamic search queries (e.g., language or topic)
+export const fetchRecommendations = async (query = '', page = 1) => {
+  const params = new URLSearchParams();
+  if (query) params.append('query', query);
+  params.append('page', page);
+
+  const response = await api.get(`/api/recommendations?${params.toString()}`);
   return response.data;
 };
 
