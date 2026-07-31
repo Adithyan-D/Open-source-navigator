@@ -4,7 +4,7 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-
+from typing import Optional
 from database import engine, get_db
 import models
 import schemas
@@ -112,24 +112,35 @@ def update_user_profile(
 
 @app.get("/api/recommendations", response_model=list[schemas.RepositoryResponse])
 async def get_repository_recommendations(
+    query: Optional[str] = None,
+    page: int = 1,  # <-- Added pagination support
     current_user: models.User = Depends(auth.get_current_user)
 ):
     """
-    Fetches GitHub repositories matched to the authenticated user's skills and interests,
-    complete with custom complexity and health scores.
+    Fetches GitHub repositories matched to the authenticated user's skills,
+    interests, or active search queries, complete with custom complexity and health scores.
     """
-    # 1. Extract user skills or fallback to general popular repos
-    user_skills = current_user.skills.strip()
-    
-    if user_skills:
-        # Take the primary skill (e.g., if skills = "Python, FastAPI", search "language:python")
-        primary_skill = user_skills.split(",")[0].strip()
-        search_query = f"language:{primary_skill} stars:>50"
+    search_query = ""
+
+    # Priority 1: User explicitly typed something in the frontend search bar or onboarding modal
+    if query and query.strip():
+        search_query = query.strip()
+
+    # Priority 2: Fall back to the user's saved database skills
+    elif current_user.skills and current_user.skills.strip():
+        primary_skill = current_user.skills.split(",")[0].strip()
+        search_query = primary_skill
+
+    # Priority 3: Fall back to general trending/popular repositories
     else:
         search_query = "stars:>1000"
 
-    # 2. Fetch repos from GitHub REST API
-    repos = await github_service.fetch_github_repositories(query=search_query, limit=10)
+    # Fetch processed repositories from GitHub service with pagination
+    repos = await github_service.fetch_github_repositories(
+        query=search_query, 
+        limit=12, 
+        page=page
+    )
     
     return repos
 
