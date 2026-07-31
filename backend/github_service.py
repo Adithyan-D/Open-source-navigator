@@ -48,24 +48,57 @@ def calculate_health_score(open_issues: int, stars: int, forks: int) -> int:
         
     return min(99, max(20, base_health))
 
-async def fetch_github_repositories(query: str = "", limit: int = 10) -> List[Dict[str, Any]]:
+async def fetch_github_repositories(query: str = "", limit: int = 10, page: int = 1) -> List[Dict[str, Any]]:
     """
-    Queries GitHub's Search API for public repositories matching keywords or languages.
+    Queries GitHub's Search API with pagination support.
     """
     headers = {
         "Accept": "application/vnd.github.v3+json",
         "User-Agent": "OpenSourceNavigator-App"
     }
     
-    # Use specified query or fallback to top starred repos
-    search_query = query.strip() if query and query.strip() else "stars:>100"
+    clean_query = query.strip() if query and query.strip() else ""
+    search_query = clean_query if clean_query else "stars:>100"
     
     params = {
         "q": search_query,
         "sort": "stars",
         "order": "desc",
-        "per_page": limit
+        "per_page": limit,
+        "page": page  # <-- Added page parameter for pagination
     }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(GITHUB_SEARCH_URL, headers=headers, params=params)
+            if response.status_code != 200:
+                return []
+            
+            data = response.json()
+            items = data.get("items", [])
+            
+            parsed_repos = []
+            for item in items:
+                stars = item.get("stargazers_count", 0) or 0
+                forks = item.get("forks_count", 0) or 0
+                open_issues = item.get("open_issues_count", 0) or 0
+                
+                parsed_repos.append({
+                    "github_id": item.get("id"),
+                    "name": item.get("name", "Unknown"),
+                    "owner": item.get("owner", {}).get("login", "Unknown"),
+                    "description": item.get("description") or "",
+                    "stars": stars,
+                    "forks": forks,
+                    "open_issues": open_issues,
+                    "languages": item.get("language") or "General",
+                    "complexity_score": calculate_complexity_score(stars, forks, open_issues),
+                    "health_score": calculate_health_score(open_issues, stars, forks),
+                })
+                
+            return parsed_repos
+        except Exception:
+            return []
 
     async with httpx.AsyncClient() as client:
         try:
