@@ -1,0 +1,18 @@
+# Docker ignore file
+**/.git
+**/.gitignore
+**/node_modules
+**/dist
+**/build
+**/.venv
+**/venv
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.pytest_cache
+**/*.db
+**/*.sqlite3
+**/.env
+**/.env.local
+**/.DS_Store

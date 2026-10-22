@@ -1,5 +1,6 @@
 # backend/schemas.py
-from pydantic import BaseModel, EmailStr
+from typing import Optional, List
+from pydantic import BaseModel, ConfigDict
 
 class UserCreate(BaseModel):
     username: str
@@ -13,17 +14,14 @@ class UserResponse(BaseModel):
     skills: str
     interests: str
 
-    class Config:
-        from_attributes = True
-
-# --- NEW SCHEMAS FOR LOGIN & TOKENS ---
+    model_config = ConfigDict(from_attributes=True)
 
 class Token(BaseModel):
     access_token: str
     token_type: str
 
 class TokenData(BaseModel):
-    username: str | None = None
+    username: Optional[str] = None
 
 class ProfileUpdate(BaseModel):
     skills: str
@@ -33,25 +31,21 @@ class RepositoryResponse(BaseModel):
     github_id: int
     name: str
     owner: str
-    description: str | None = None
+    description: Optional[str] = None
     stars: int
     forks: int
     open_issues: int
     languages: str
-    complexity_score: int | None = None
-    health_score: int | None = None
+    complexity_score: Optional[int] = None
+    health_score: Optional[int] = None
 
-    class Config:
-        from_attributes = True
-
-# backend/schemas.py (Add at the bottom)
+    model_config = ConfigDict(from_attributes=True)
 
 class AIInsightsData(BaseModel):
     summary: str
-    roadmap: list[str]
+    roadmap: List[str]
 
 class AIInsightsResponse(BaseModel):
     github_id: int
     repo_name: str
     ai_insights: AIInsightsData
-    

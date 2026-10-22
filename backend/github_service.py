@@ -1,9 +1,27 @@
 # backend/github_service.py
-import httpx
+import os
 import math
+import logging
+import httpx
 from typing import List, Dict, Any
+from dotenv import load_dotenv
+
+load_dotenv()
+
+logger = logging.getLogger("github_service")
 
 GITHUB_SEARCH_URL = "https://api.github.com/search/repositories"
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+
+def get_github_headers() -> Dict[str, str]:
+    """Builds standard headers for GitHub API requests, adding authorization if token is configured."""
+    headers = {
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "OpenSourceNavigator-App"
+    }
+    if GITHUB_TOKEN and GITHUB_TOKEN.strip():
+        headers["Authorization"] = f"Bearer {GITHUB_TOKEN.strip()}"
+    return headers
 
 def calculate_complexity_score(stars: int, forks: int, open_issues: int) -> int:
     """
@@ -50,13 +68,9 @@ def calculate_health_score(open_issues: int, stars: int, forks: int) -> int:
 
 async def fetch_github_repositories(query: str = "", limit: int = 10, page: int = 1) -> List[Dict[str, Any]]:
     """
-    Queries GitHub's Search API with pagination support.
+    Queries GitHub's Search API with pagination support and optional token authentication.
     """
-    headers = {
-        "Accept": "application/vnd.github.v3+json",
-        "User-Agent": "OpenSourceNavigator-App"
-    }
-    
+    headers = get_github_headers()
     clean_query = query.strip() if query and query.strip() else ""
     search_query = clean_query if clean_query else "stars:>100"
     
@@ -64,14 +78,22 @@ async def fetch_github_repositories(query: str = "", limit: int = 10, page: int 
         "q": search_query,
         "sort": "stars",
         "order": "desc",
-        "per_page": limit,
-        "page": page  # <-- Added page parameter for pagination
+        "per_page": min(100, max(1, limit)),
+        "page": max(1, page)
     }
 
-    async with httpx.AsyncClient() as client:
-        try:
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(GITHUB_SEARCH_URL, headers=headers, params=params)
+            
+            if response.status_code == 403 or response.status_code == 429:
+                logger.warning(
+                    "GitHub API rate limit exceeded. Set GITHUB_TOKEN in your environment to increase limits to 5,000 req/hr."
+                )
+                return []
+            
             if response.status_code != 200:
+                logger.error(f"GitHub Search API returned HTTP {response.status_code}: {response.text}")
                 return []
             
             data = response.json()
@@ -97,38 +119,9 @@ async def fetch_github_repositories(query: str = "", limit: int = 10, page: int 
                 })
                 
             return parsed_repos
-        except Exception:
-            return []
-
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(GITHUB_SEARCH_URL, headers=headers, params=params)
-            
-            if response.status_code != 200:
-                return []
-            
-            data = response.json()
-            items = data.get("items", [])
-            
-            parsed_repos = []
-            for item in items:
-                stars = item.get("stargazers_count", 0) or 0
-                forks = item.get("forks_count", 0) or 0
-                open_issues = item.get("open_issues_count", 0) or 0
-                
-                parsed_repos.append({
-                    "github_id": item.get("id"),
-                    "name": item.get("name", "Unknown"),
-                    "owner": item.get("owner", {}).get("login", "Unknown"),
-                    "description": item.get("description") or "",
-                    "stars": stars,
-                    "forks": forks,
-                    "open_issues": open_issues,
-                    "languages": item.get("language") or "General",
-                    "complexity_score": calculate_complexity_score(stars, forks, open_issues),
-                    "health_score": calculate_health_score(open_issues, stars, forks),
-                })
-                
-            return parsed_repos
-        except Exception:
-            return []
+    except httpx.TimeoutException:
+        logger.error("Timeout connecting to GitHub Search API.")
+        return []
+    except Exception as e:
+        logger.error(f"Unexpected error fetching GitHub repositories: {e}")
+        return []
