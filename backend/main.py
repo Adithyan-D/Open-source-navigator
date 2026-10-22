@@ -35,19 +35,22 @@ app = FastAPI(
 )
 
 # Parse CORS allowed origins from environment variable
-raw_origins = os.getenv(
-    "ALLOWED_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000"
-)
+raw_origins = os.getenv("ALLOWED_ORIGINS", "*")
 allowed_origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allowed_origins if allowed_origins else ["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+cors_kwargs = {
+    "allow_methods": ["*"],
+    "allow_headers": ["*"],
+    "allow_credentials": True,
+}
+
+if "*" in allowed_origins or not allowed_origins:
+    # Accept any HTTP/HTTPS origin (e.g. Vercel deployments, preview URLs, localhost)
+    cors_kwargs["allow_origin_regex"] = r"https?://.*"
+else:
+    cors_kwargs["allow_origins"] = allowed_origins
+
+app.add_middleware(CORSMiddleware, **cors_kwargs)
 
 @app.get("/")
 def read_root():

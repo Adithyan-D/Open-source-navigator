@@ -1,6 +1,6 @@
 // frontend/src/components/AuthModal.jsx
 import React, { useState } from 'react';
-import { loginUser, registerUser } from '../api';
+import { loginUser, registerUser, API_BASE_URL } from '../api';
 import { Sparkles, Lock, Mail, User, ArrowRight, CheckCircle } from 'lucide-react';
 
 const TRUSTED_DOMAINS = [
@@ -79,13 +79,16 @@ export default function AuthModal({ onAuthSuccess }) {
         setSuccessMessage('Account created successfully! Please sign in with your credentials.');
       }
     } catch (err) {
+      console.error('Registration/Login error:', err);
       const detail = err.response?.data?.detail;
       if (typeof detail === 'string') {
         setError(detail);
       } else if (Array.isArray(detail) && detail.length > 0) {
         setError(detail.map(d => d.msg || JSON.stringify(d)).join(', '));
+      } else if (!err.response) {
+        setError(`Cannot reach backend (${API_BASE_URL}). If using Render free tier, the server may take 30-50 seconds to wake up from idle. Please wait a moment and retry.`);
       } else {
-        setError('Authentication failed. Please check your inputs.');
+        setError(err.message || 'Authentication failed. Please check your inputs.');
       }
     } finally {
       setLoading(false);
