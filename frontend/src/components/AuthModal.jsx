@@ -1,7 +1,30 @@
 // frontend/src/components/AuthModal.jsx
 import React, { useState } from 'react';
 import { loginUser, registerUser } from '../api';
-import { Sparkles, Lock, Mail, User, ArrowRight } from 'lucide-react';
+import { Sparkles, Lock, Mail, User, ArrowRight, CheckCircle } from 'lucide-react';
+
+const TRUSTED_DOMAINS = [
+  'gmail.com', 'googlemail.com',
+  'outlook.com', 'hotmail.com', 'live.com', 'msn.com',
+  'yahoo.com', 'yahoo.co.in', 'yahoo.co.uk', 'yahoo.fr', 'ymail.com', 'rocketmail.com',
+  'icloud.com', 'me.com', 'mac.com',
+  'proton.me', 'protonmail.com', 'tuta.com', 'tutanota.com',
+  'zoho.com', 'zohomail.com', 'aol.com', 'mail.com', 'gmx.com', 'fastmail.com', 'hey.com',
+  'github.com', 'google.com', 'microsoft.com'
+];
+
+const isAllowedDomain = (email) => {
+  if (!email || !email.includes('@')) return false;
+  const parts = email.split('@');
+  if (parts.length !== 2) return false;
+  const domain = parts[1].toLowerCase().trim();
+  
+  if (TRUSTED_DOMAINS.includes(domain)) return true;
+  if (domain.endsWith('.edu') || domain.endsWith('.edu.in') || domain.endsWith('.ac.in') || domain.endsWith('.ac.uk')) {
+    return true;
+  }
+  return false;
+};
 
 export default function AuthModal({ onAuthSuccess }) {
   const [isLogin, setIsLogin] = useState(true);
@@ -10,45 +33,64 @@ export default function AuthModal({ onAuthSuccess }) {
     email: '',
     password: '',
   });
+
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
     setError('');
+    setSuccessMessage('');
   };
 
-const handleSubmit = async (e) => {
-  e.preventDefault();
-  setLoading(true);
-  setError('');
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    setSuccessMessage('');
 
-  try {
-    if (isLogin) {
-      // 1. Handle Login
-      const data = await loginUser(formData.username, formData.password);
-      localStorage.setItem('token', data.access_token);
-      onAuthSuccess();
-    } else {
-      // 2. Handle Registration
-      await registerUser({
-        username: formData.username,
-        email: formData.email,
-        password: formData.password,
-      });
-      
-      // Instead of auto-login, switch to login tab with pre-filled username!
-      setIsLogin(true);
-      setError('');
-      alert('Account created successfully! Please sign in with your credentials.');
+    // Pre-flight check for domain in registration mode
+    if (!isLogin) {
+      if (!isAllowedDomain(formData.email)) {
+        setError('Please use a recognized email provider (e.g. Gmail, Outlook, Yahoo, iCloud, Proton, Zoho) or an official .edu domain.');
+        setLoading(false);
+        return;
+      }
     }
-  } catch (err) {
-    const detail = err.response?.data?.detail;
-    setError(typeof detail === 'string' ? detail : 'Authentication failed. Please check your inputs.');
-  } finally {
-    setLoading(false);
-  }
-};
+
+    try {
+      if (isLogin) {
+        // 1. Handle Login
+        const data = await loginUser(formData.username, formData.password);
+        localStorage.setItem('token', data.access_token);
+        onAuthSuccess();
+      } else {
+        // 2. Handle Registration with domain deliverability verification
+        await registerUser({
+          username: formData.username,
+          email: formData.email,
+          password: formData.password,
+        });
+        
+        // Switch to sign-in tab with prefilled username
+        setIsLogin(true);
+        setFormData((prev) => ({ ...prev, password: '' }));
+        setSuccessMessage('Account created successfully! Please sign in with your credentials.');
+      }
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      if (typeof detail === 'string') {
+        setError(detail);
+      } else if (Array.isArray(detail) && detail.length > 0) {
+        setError(detail.map(d => d.msg || JSON.stringify(d)).join(', '));
+      } else {
+        setError('Authentication failed. Please check your inputs.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
@@ -65,6 +107,14 @@ const handleSubmit = async (e) => {
             {isLogin ? 'Welcome back! Log in to explore projects.' : 'Create an account to save & explore projects.'}
           </p>
         </div>
+
+        {/* Success Alert */}
+        {successMessage && (
+          <div className="mb-4 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm flex items-start gap-2">
+            <CheckCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>{successMessage}</span>
+          </div>
+        )}
 
         {/* Error Alert */}
         {error && (
@@ -106,10 +156,13 @@ const handleSubmit = async (e) => {
                   required
                   value={formData.email}
                   onChange={handleChange}
-                  placeholder="john@example.com"
+                  placeholder="john@gmail.com"
                   className="w-full pl-10 pr-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
                 />
               </div>
+              <p className="text-[11px] text-slate-500 mt-1">
+                Supports Gmail, Outlook, Yahoo, iCloud, Proton, Zoho, or .edu domains.
+              </p>
             </div>
           )}
 
@@ -154,8 +207,9 @@ const handleSubmit = async (e) => {
             onClick={() => {
               setIsLogin(!isLogin);
               setError('');
+              setSuccessMessage('');
             }}
-            className="text-xs text-slate-400 hover:text-indigo-400 transition-colors"
+            className="text-xs text-slate-400 hover:text-indigo-400 transition-colors cursor-pointer"
           >
             {isLogin ? "Don't have an account? Sign up" : 'Already have an account? Log in'}
           </button>

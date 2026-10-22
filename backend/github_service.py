@@ -2,6 +2,7 @@
 import os
 import math
 import logging
+import datetime
 import httpx
 from typing import List, Dict, Any
 from dotenv import load_dotenv
@@ -12,6 +13,26 @@ logger = logging.getLogger("github_service")
 
 GITHUB_SEARCH_URL = "https://api.github.com/search/repositories"
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+
+# Curated rotation topics to dynamically change default repositories over time
+ROTATING_CURATED_TOPICS = [
+    "ai stars:>1000",
+    "python stars:>1000",
+    "typescript stars:>1000",
+    "rust stars:>1000",
+    "javascript stars:>1000",
+    "go stars:>1000",
+    "stars:>5000",
+    "stars:>2000"
+]
+
+def get_rotating_default_query() -> str:
+    """
+    Returns a dynamic, rotating query based on time of day (rotates every 30 minutes).
+    Ensures that default repositories change over time without breaking pagination.
+    """
+    interval_block = int(datetime.datetime.now(datetime.timezone.utc).timestamp() // 1800)
+    return ROTATING_CURATED_TOPICS[interval_block % len(ROTATING_CURATED_TOPICS)]
 
 def get_github_headers() -> Dict[str, str]:
     """Builds standard headers for GitHub API requests, adding authorization if token is configured."""
@@ -66,62 +87,85 @@ def calculate_health_score(open_issues: int, stars: int, forks: int) -> int:
         
     return min(99, max(20, base_health))
 
-async def fetch_github_repositories(query: str = "", limit: int = 10, page: int = 1) -> List[Dict[str, Any]]:
+async def fetch_github_repositories(query: str = "", limit: int = 12, page: int = 1) -> List[Dict[str, Any]]:
     """
-    Queries GitHub's Search API with pagination support and optional token authentication.
+    Queries GitHub's Search API with resilient fallback chaining:
+    1. Tries user's exact query.
+    2. If no repos found, tries relaxed keywords.
+    3. If still no repos found or if query is empty, falls back to dynamic rotating topics.
+    Ensures that repositories are ALWAYS returned for every search query and change over time.
     """
     headers = get_github_headers()
     clean_query = query.strip() if query and query.strip() else ""
-    search_query = clean_query if clean_query else "stars:>100"
     
-    params = {
-        "q": search_query,
-        "sort": "stars",
-        "order": "desc",
-        "per_page": min(100, max(1, limit)),
-        "page": max(1, page)
-    }
+    candidates = []
+    if clean_query:
+        candidates.append(clean_query)
+        words = [w for w in clean_query.split() if len(w) > 1]
+        if len(words) > 2:
+            candidates.append(" ".join(words[:2]))
+        if len(words) > 1:
+            candidates.append(words[0])
+            
+        # Fallbacks to ensure non-empty results even for rare keywords/typos
+        candidates.append(get_rotating_default_query())
+        candidates.append("stars:>1000")
+    else:
+        # Default query rotates over time
+        candidates.append(get_rotating_default_query())
+        candidates.append("stars:>1000")
+
+    # Deduplicate while preserving order
+    unique_candidates = []
+    for c in candidates:
+        if c and c not in unique_candidates:
+            unique_candidates.append(c)
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(GITHUB_SEARCH_URL, headers=headers, params=params)
-            
-            if response.status_code == 403 or response.status_code == 429:
-                logger.warning(
-                    "GitHub API rate limit exceeded. Set GITHUB_TOKEN in your environment to increase limits to 5,000 req/hr."
-                )
-                return []
-            
-            if response.status_code != 200:
-                logger.error(f"GitHub Search API returned HTTP {response.status_code}: {response.text}")
-                return []
-            
-            data = response.json()
-            items = data.get("items", [])
-            
-            parsed_repos = []
-            for item in items:
-                stars = item.get("stargazers_count", 0) or 0
-                forks = item.get("forks_count", 0) or 0
-                open_issues = item.get("open_issues_count", 0) or 0
+            for attempt_query in unique_candidates:
+                params = {
+                    "q": attempt_query,
+                    "sort": "stars",
+                    "order": "desc",
+                    "per_page": min(100, max(1, limit)),
+                    "page": max(1, page)
+                }
+
+                response = await client.get(GITHUB_SEARCH_URL, headers=headers, params=params)
                 
-                parsed_repos.append({
-                    "github_id": item.get("id"),
-                    "name": item.get("name", "Unknown"),
-                    "owner": item.get("owner", {}).get("login", "Unknown"),
-                    "description": item.get("description") or "",
-                    "stars": stars,
-                    "forks": forks,
-                    "open_issues": open_issues,
-                    "languages": item.get("language") or "General",
-                    "complexity_score": calculate_complexity_score(stars, forks, open_issues),
-                    "health_score": calculate_health_score(open_issues, stars, forks),
-                })
+                if response.status_code in (403, 429):
+                    logger.warning("GitHub API rate limit exceeded.")
+                    return []
                 
-            return parsed_repos
-    except httpx.TimeoutException:
-        logger.error("Timeout connecting to GitHub Search API.")
-        return []
+                if response.status_code != 200:
+                    continue
+                
+                data = response.json()
+                items = data.get("items", [])
+                
+                if items:
+                    parsed_repos = []
+                    for item in items:
+                        stars = item.get("stargazers_count", 0) or 0
+                        forks = item.get("forks_count", 0) or 0
+                        open_issues = item.get("open_issues_count", 0) or 0
+                        
+                        parsed_repos.append({
+                            "github_id": item.get("id"),
+                            "name": item.get("name", "Unknown"),
+                            "owner": item.get("owner", {}).get("login", "Unknown"),
+                            "description": item.get("description") or "",
+                            "stars": stars,
+                            "forks": forks,
+                            "open_issues": open_issues,
+                            "languages": item.get("language") or "General",
+                            "complexity_score": calculate_complexity_score(stars, forks, open_issues),
+                            "health_score": calculate_health_score(open_issues, stars, forks),
+                        })
+                    return parsed_repos
+
+            return []
     except Exception as e:
-        logger.error(f"Unexpected error fetching GitHub repositories: {e}")
+        logger.error(f"Error fetching GitHub repositories: {e}")
         return []

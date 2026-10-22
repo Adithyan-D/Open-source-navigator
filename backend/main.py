@@ -1,5 +1,6 @@
 # backend/main.py
 import os
+import asyncio
 import logging
 from typing import Optional, List
 import httpx
@@ -9,6 +10,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from dotenv import load_dotenv
+from email_validator import validate_email, EmailNotValidError
 
 import models
 import schemas
@@ -70,10 +72,62 @@ def health_check(db: Session = Depends(get_db)):
         "database": db_status
     }
 
+# Allowed legitimate email domains
+TRUSTED_EMAIL_DOMAINS = {
+    # Major global providers
+    "gmail.com", "googlemail.com",
+    "outlook.com", "hotmail.com", "live.com", "msn.com",
+    "yahoo.com", "yahoo.co.in", "yahoo.co.uk", "yahoo.fr", "ymail.com", "rocketmail.com",
+    "icloud.com", "me.com", "mac.com",
+    "proton.me", "protonmail.com", "tuta.com", "tutanota.com",
+    "zoho.com", "zohomail.com",
+    "aol.com", "mail.com", "gmx.com", "gmx.net", "fastmail.com", "hey.com",
+    # Top tech / developer companies
+    "github.com", "google.com", "microsoft.com", "apple.com", "amazon.com", "meta.com"
+}
+
+TRUSTED_TLD_SUFFIXES = (
+    ".edu", ".edu.in", ".ac.in", ".ac.uk", ".edu.au", ".edu.cn", ".ac.nz"
+)
+
+def is_domain_allowed(domain: str) -> bool:
+    """Checks if the email domain belongs to a recognized provider or institutional domain."""
+    clean_domain = domain.lower().strip()
+    if clean_domain in TRUSTED_EMAIL_DOMAINS:
+        return True
+    if any(clean_domain.endswith(suffix) for suffix in TRUSTED_TLD_SUFFIXES):
+        return True
+    return False
+
 @app.post("/api/register", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
 def register_user(user_data: schemas.UserCreate, db: Session = Depends(get_db)):
-    # 1. Check if email already registered
-    existing_email = db.query(models.User).filter(models.User.email == user_data.email).first()
+    """
+    Registers a new user account:
+    1. Validates email address format and verifies that the domain exists on DNS and accepts mail.
+    2. Enforces that email belongs to a recognized, legitimate provider or educational institution.
+    3. Checks that username and email are not already in use.
+    4. Hashes password securely using bcrypt and persists the user record.
+    """
+    # 0. Validate email address syntax and verify domain deliverability (DNS MX records)
+    try:
+        email_info = validate_email(user_data.email, check_deliverability=True)
+        normalized_email = email_info.normalized
+        domain = email_info.domain
+    except EmailNotValidError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid email: {str(e)}"
+        )
+
+    # 1. Enforce recognized domain whitelist
+    if not is_domain_allowed(domain):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Registration requires a recognized email domain (e.g. Gmail, Outlook, Yahoo, iCloud, Proton, Zoho, or a .edu domain). '@{domain}' is not accepted."
+        )
+
+    # 2. Check if email already registered
+    existing_email = db.query(models.User).filter(models.User.email == normalized_email).first()
     if existing_email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -94,7 +148,7 @@ def register_user(user_data: schemas.UserCreate, db: Session = Depends(get_db)):
     # 4. Create and commit new user
     new_user = models.User(
         username=user_data.username,
-        email=user_data.email,
+        email=normalized_email,
         hashed_password=hashed_password
     )
 
@@ -177,14 +231,18 @@ async def get_repository_recommendations(
     if query and query.strip():
         search_query = query.strip()
 
-    # Priority 2: Fall back to the user's primary saved skill
+    # Priority 2: Fall back to user's saved skills (rotating across their selected skills over time)
     elif current_user.skills and current_user.skills.strip():
-        primary_skill = current_user.skills.split(",")[0].strip()
-        search_query = primary_skill
+        skills_list = [s.strip() for s in current_user.skills.split(",") if s.strip()]
+        if skills_list:
+            import datetime
+            # Rotate across user's skills every 15 minutes
+            interval = int(datetime.datetime.now(datetime.timezone.utc).timestamp() // 900)
+            search_query = skills_list[interval % len(skills_list)]
 
-    # Priority 3: Fall back to general popular repositories
+    # Priority 3: Fall back to dynamic rotating default topics
     else:
-        search_query = "stars:>1000"
+        search_query = ""
 
     repos = await github_service.fetch_github_repositories(
         query=search_query, 
@@ -298,7 +356,8 @@ async def get_repository_ai_insights(
             
             data = resp.json()
             
-            insights = ai_service.generate_repo_insights(
+            insights = await asyncio.to_thread(
+                ai_service.generate_repo_insights,
                 repo_name=data.get("name", ""),
                 owner=data.get("owner", {}).get("login", ""),
                 description=data.get("description", ""),

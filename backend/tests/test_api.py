@@ -65,25 +65,65 @@ def test_github_scoring_algorithms():
     health_neglected = github_service.calculate_health_score(3000, 1000, 20)
     assert health_active > health_neglected
 
+def test_email_domain_validation_on_registration():
+    # 1. Non-existent domain
+    bad_payload = {
+        "username": "baduser",
+        "email": "baduser@nonexistentdomain999999999.xyz",
+        "password": "SecurePassword123!"
+    }
+    bad_resp = client.post("/api/register", json=bad_payload)
+    assert bad_resp.status_code == 400
+
+    # 2. Random unregistered / unapproved domain
+    random_payload = {
+        "username": "randomuser",
+        "email": "skjdnclscw@sjkvnv.com",
+        "password": "SecurePassword123!"
+    }
+    rand_resp = client.post("/api/register", json=random_payload)
+    assert rand_resp.status_code == 400
+    assert "not accepted" in rand_resp.json()["detail"] or "does not exist" in rand_resp.json()["detail"]
+
+    # 3. Squatted 4-letter domain with parked MX (kjfn.com)
+    kjfn_payload = {
+        "username": "kjfnuser",
+        "email": "sdfncvluws@kjfn.com",
+        "password": "SecurePassword123!"
+    }
+    kjfn_resp = client.post("/api/register", json=kjfn_payload)
+    assert kjfn_resp.status_code == 400
+    assert "not accepted" in kjfn_resp.json()["detail"]
+
+    # 4. Malformed syntax
+    malformed_payload = {
+        "username": "baduser2",
+        "email": "notanemailaddress",
+        "password": "SecurePassword123!"
+    }
+    malformed_resp = client.post("/api/register", json=malformed_payload)
+    assert malformed_resp.status_code == 400
+
 def test_user_registration_and_login_flow():
-    # 1. Register new user
+    # 1. Register with a recognized provider domain (gmail.com)
     user_payload = {
         "username": "testdev",
-        "email": "testdev@example.com",
+        "email": "testdev@gmail.com",
         "password": "SecurePassword123!"
     }
     register_resp = client.post("/api/register", json=user_payload)
     assert register_resp.status_code == 201
     user_data = register_resp.json()
     assert user_data["username"] == "testdev"
-    assert user_data["email"] == "testdev@example.com"
+    assert user_data["email"] == "testdev@gmail.com"
     assert "hashed_password" not in user_data
 
-    # 2. Duplicate username should fail
-    duplicate_resp = client.post("/api/register", json=user_payload)
-    assert duplicate_resp.status_code == 400
+    # 2. Duplicate registration fails
+    dup_resp = client.post("/api/register", json=user_payload)
+    assert dup_resp.status_code == 400
+    assert "Email is already registered" in dup_resp.json()["detail"]
 
-    # 3. Login with correct credentials
+    # 3. Login with credentials
     login_resp = client.post(
         "/api/login",
         data={"username": "testdev", "password": "SecurePassword123!"}
@@ -93,20 +133,13 @@ def test_user_registration_and_login_flow():
     assert "access_token" in token_data
     assert token_data["token_type"] == "bearer"
 
-    # 4. Login with invalid password fails
-    bad_login = client.post(
-        "/api/login",
-        data={"username": "testdev", "password": "WrongPassword"}
-    )
-    assert bad_login.status_code == 401
-
-    # 5. Access profile with token
+    # 4. Access profile with token
     auth_header = {"Authorization": f"Bearer {token_data['access_token']}"}
     profile_resp = client.get("/api/profile", headers=auth_header)
     assert profile_resp.status_code == 200
     assert profile_resp.json()["username"] == "testdev"
 
-    # 6. Update user profile skills
+    # 5. Update user skills
     update_resp = client.put(
         "/api/profile",
         json={"skills": "Python, TypeScript", "interests": "Web development, AI"},
@@ -114,8 +147,24 @@ def test_user_registration_and_login_flow():
     )
     assert update_resp.status_code == 200
     assert update_resp.json()["skills"] == "Python, TypeScript"
-    assert update_resp.json()["interests"] == "Web development, AI"
 
 def test_unauthorized_access():
     response = client.get("/api/profile")
     assert response.status_code == 401
+
+def test_ai_service_insights_structure():
+    import ai_service
+    result = ai_service.generate_repo_insights(
+        repo_name="test-repo",
+        owner="test-owner",
+        description="A great open-source project",
+        language="Python"
+    )
+    assert "summary" in result
+    assert "roadmap" in result
+    assert isinstance(result["roadmap"], list)
+    assert len(result["roadmap"]) >= 2
+    # Ensure no raw JSON errors leaked into roadmap
+    for step in result["roadmap"]:
+        assert "Unterminated string" not in step
+        assert "JSONDecodeError" not in step

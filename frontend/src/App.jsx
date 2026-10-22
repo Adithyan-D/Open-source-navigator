@@ -134,6 +134,14 @@ export default function App() {
     setUser(null);
   };
 
+  const handleSearchChange = (e) => {
+    const val = e.target.value;
+    setSearchQuery(val);
+    if (val.trim() === '') {
+      loadInitialData('');
+    }
+  };
+
   const handleSearchSubmit = (e) => {
     e.preventDefault();
     loadInitialData(searchQuery);
@@ -257,10 +265,22 @@ export default function App() {
               <input
                 type="text"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={handleSearchChange}
                 placeholder="Search skills, topics, languages..."
-                className="w-full pl-10 pr-4 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+                className="w-full pl-10 pr-9 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
               />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery('');
+                    loadInitialData('');
+                  }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </form>
           )}
         </div>
@@ -325,7 +345,7 @@ export default function App() {
             {aiLoading ? (
               <div className="py-12 flex flex-col items-center justify-center text-slate-400">
                 <Loader2 className="w-8 h-8 animate-spin text-indigo-400 mb-3" />
-                <p className="text-xs">Analyzing codebase with Gemini AI...</p>
+                <p className="text-xs">Analyzing...Please wait...</p>
               </div>
             ) : aiData ? (
               <div className="space-y-6">

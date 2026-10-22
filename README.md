@@ -13,7 +13,7 @@ An intelligent, full-stack open-source discovery platform designed to guide deve
 - **Repository Scoring Engine**:
   - **Complexity Score (1–99)**: Logarithmic metric evaluating repository scope across stars, forks, and issue volume.
   - **Health Score (20–99)**: Community vitality metric factoring fork-to-star ratio and open issue backlog.
-- **AI-Powered Insights & Roadmaps**: Integrates Google Gemini (`gemini-2.5-flash`) to generate concise 2-sentence repository summaries and actionable 3-step beginner contribution roadmaps.
+- **AI-Powered Insights & Roadmaps**: Integrates Google Gemini (`gemini-3.8-flash`) to generate concise 2-sentence repository summaries and actionable 3-step beginner contribution roadmaps.
 - **Bookmarks & Profile Management**: Save prospective repositories for later and update skill tags dynamically.
 - **Secure Authentication**: Salted bcrypt password hashing with signed JSON Web Tokens (JWT).
 
@@ -127,7 +127,7 @@ The frontend will run on [http://localhost:5173](http://localhost:5173) and prox
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | JWT token lifetime in minutes | `10080` (7 days) |
 | `ALLOWED_ORIGINS` | Comma-delimited list of CORS permitted origins | `http://localhost:5173,http://127.0.0.1:5173` |
 | `GEMINI_API_KEY` | Google AI Studio API key | *(Optional, provides fallback if unset)* |
-| `GEMINI_MODEL` | Gemini model variant | `gemini-2.5-flash` |
+| `GEMINI_MODEL` | Gemini model variant | `gemini-3.8-flash` |
 | `GITHUB_TOKEN` | GitHub Personal Access Token (boosts rate limit to 5,000 req/hr) | *(Optional)* |
 
 ### Frontend (`frontend/.env`)
