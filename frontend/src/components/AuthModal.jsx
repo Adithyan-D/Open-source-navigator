@@ -193,7 +193,10 @@ export default function AuthModal({ onAuthSuccess }) {
             className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800 text-white font-medium rounded-xl transition-all shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2 cursor-pointer mt-6"
           >
             {loading ? (
-              <span>Processing...</span>
+              <div className="flex items-center gap-2 text-xs">
+                <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin shrink-0" />
+                <span>Processing... (Render server loading / waking up)</span>
+              </div>
             ) : (
               <>
                 <span>{isLogin ? 'Sign In' : 'Create Account'}</span>
@@ -201,6 +204,12 @@ export default function AuthModal({ onAuthSuccess }) {
               </>
             )}
           </button>
+
+          {loading && (
+            <p className="text-[11px] text-amber-400/90 text-center mt-3 bg-amber-500/10 border border-amber-500/20 py-2 px-3 rounded-lg leading-relaxed">
+              ⏳ <strong>Render free tier waking up:</strong> If the server has been idle, Render takes ~30–50s to spin up. Please wait...
+            </p>
+          )}
         </form>
 
         {/* Toggle Mode */}
