@@ -111,9 +111,9 @@ def register_user(user_data: schemas.UserCreate, db: Session = Depends(get_db)):
     3. Checks that username and email are not already in use.
     4. Hashes password securely using bcrypt and persists the user record.
     """
-    # 0. Validate email address syntax and verify domain deliverability (DNS MX records)
+    # 0. Validate email address syntax instantly in memory (no slow DNS network lookups)
     try:
-        email_info = validate_email(user_data.email, check_deliverability=True)
+        email_info = validate_email(user_data.email, check_deliverability=False)
         normalized_email = email_info.normalized
         domain = email_info.domain
     except EmailNotValidError as e:

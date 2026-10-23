@@ -23,6 +23,7 @@ else:
     engine_kwargs["pool_recycle"] = 300
     engine_kwargs["pool_size"] = 10
     engine_kwargs["max_overflow"] = 20
+    engine_kwargs["connect_args"] = {"connect_timeout": 10}
 
 engine = create_engine(DATABASE_URL, **engine_kwargs)
 
