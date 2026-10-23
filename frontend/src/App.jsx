@@ -345,7 +345,7 @@ export default function App() {
             {aiLoading ? (
               <div className="py-12 flex flex-col items-center justify-center text-slate-400">
                 <Loader2 className="w-8 h-8 animate-spin text-indigo-400 mb-3" />
-                <p className="text-xs">Analyzing...Please wait...</p>
+                <p className="text-xs">Analyzing...Please wait...(5 minutes)</p>
               </div>
             ) : aiData ? (
               <div className="space-y-6">
