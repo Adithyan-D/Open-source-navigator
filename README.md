@@ -1,6 +1,11 @@
 # Open Source Navigator 🧭
 
-[![CI Pipeline](https://github.com/open-source-navigator/open-source-navigator/actions/workflows/ci.yml/badge.svg)](https://github.com/open-source-navigator/open-source-navigator/actions)
+<img width="1920" height="836" alt="image" src="https://github.com/user-attachments/assets/b23cb8ea-d0ea-4d40-b43d-f25ff2a4ae74" />
+<img width="1920" height="836" alt="image" src="https://github.com/user-attachments/assets/db40c06a-fc3a-4d01-8c4f-e626d273a1e1" />
+<img width="1920" height="836" alt="image" src="https://github.com/user-attachments/assets/8f7f7848-9cd5-42c9-acd1-d7a9b65ec21f" />
+<img width="1920" height="836" alt="image" src="https://github.com/user-attachments/assets/928c3770-a7bc-4234-9ddc-ea334b80c5f2" />
+<img width="1920" height="836" alt="image" src="https://github.com/user-attachments/assets/b39b182b-dbbf-4d22-b4ee-38e41d8d4eb8" />
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 An intelligent, full-stack open-source discovery platform designed to guide developers—especially beginners and junior engineers—to repositories where they can make meaningful contributions.
